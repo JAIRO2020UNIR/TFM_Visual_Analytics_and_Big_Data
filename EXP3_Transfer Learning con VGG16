@@ -1,0 +1,117 @@
+#  MODELO CNN CON TRANSFER LEARNING (VGG16)
+# Importamos librerías necesarias
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.layers import Dense, Dropout, Flatten, BatchNormalization, GlobalAveragePooling2D
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+
+# CONFIGURACIÓN INICIAL
+IMG_SIZE = 224
+BATCH_SIZE = 16
+EPOCHS = 50
+#DATASET_DIR = "/content/dataset_BUSI"  # 📂 Cambia esta ruta a tu carpeta principal (con subcarpetas 0,1,2)
+DATASET_DIR = "/content/drive/MyDrive/Dataset_BUSI_with_GT"  # ajustar ruta
+CATEGORIES = ['normal', 'benign', 'malignant']
+LABEL_DICT = {'normal': 0, 'benign': 1, 'malignant': 2}
+
+# CARGA Y AUMENTO DE DATOS
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    validation_split=0.2,
+    rotation_range=25,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    zoom_range=0.2,
+    brightness_range=[0.8, 1.2],
+    horizontal_flip=True,
+    vertical_flip=True,
+    fill_mode='nearest'
+)
+
+train_generator = train_datagen.flow_from_directory(
+    DATASET_DIR,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    color_mode='rgb',
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='training'
+)
+
+val_generator = train_datagen.flow_from_directory(
+    DATASET_DIR,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    color_mode='rgb',
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='validation'
+)
+
+# MODELO BASE VGG16
+base_model = VGG16(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
+base_model.trainable = False  # Congelamos las capas convolucionales
+
+# CAPAS PERSONALIZADAS
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+x = Dense(256, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dropout(0.3)(x)
+x = Dense(128, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dropout(0.3)(x)
+output = Dense(3, activation='softmax')(x)
+
+model = Model(inputs=base_model.input, outputs=output)
+
+ 
+# COMPILACIÓN
+optimizer = Adam(learning_rate=1e-4)
+model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+
+ 
+# CALLBACKS
+checkpoint = ModelCheckpoint('cnn_transfer_vgg16.keras', monitor='val_loss', save_best_only=True, verbose=1)
+early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', patience=4, factor=0.5, verbose=1)
+
+ 
+# ENTRENAMIENTO
+history = model.fit(
+    train_generator,
+    validation_data=val_generator,
+    epochs=EPOCHS,
+    callbacks=[checkpoint, early_stop, reduce_lr],
+    verbose=1
+)
+
+ 
+# EVALUACIÓN FINAL
+val_loss, val_acc = model.evaluate(val_generator)
+print(f"\n Exactitud (accuracy) en validación: {val_acc:.4f}   -   Pérdida (loss): {val_loss:.4f}")
+
+ 
+# CURVAS DE ENTRENAMIENTO
+plt.figure(figsize=(12,5))
+plt.subplot(1,2,1)
+plt.plot(history.history['accuracy'], label='Entrenamiento')
+plt.plot(history.history['val_accuracy'], label='Validación')
+plt.title('Precisión durante el entrenamiento')
+plt.xlabel('Épocas')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.subplot(1,2,2)
+plt.plot(history.history['loss'], label='Entrenamiento')
+plt.plot(history.history['val_loss'], label='Validación')
+plt.title('Pérdida durante el entrenamiento')
+plt.xlabel('Épocas')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.show()
