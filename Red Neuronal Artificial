@@ -1,0 +1,250 @@
+#Se recomienda usar celdas de código independientes parea ir vizualizando los resultados obtenidos, por tanto les llámare bloque 
+#a cada script que deba usarce en una celda de código
+#Bloque 1
+import numpy as np
+import pandas as pd
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+
+# Cargar el dataset
+data = load_breast_cancer()
+df = pd.DataFrame(data.data, columns=data.feature_names)
+df['target'] = data.target  # Añadir la columna objetivo
+df.head()
+
+#Bloque 2
+# Seleccionar características más relevantes
+features = ['mean radius', 'mean texture', 'mean perimeter', 'mean area', 'mean concavity']
+X = df[features]  # Variables predictoras
+y = df['target']  # Variable objetivo
+X.head()
+
+#Bloque 3
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+# quiero ver los valores de la variable X_train o X_test
+
+X_train
+#X_test
+
+#Bloque 4
+# Definir el modelo
+model = Sequential([
+    Dense(32, activation='relu', input_shape=(X_train.shape[1],)),  # Capa oculta con 32 neuronas
+    Dense(16, activation='relu'),  # Segunda capa oculta con 16 neuronas
+    Dense(1, activation='sigmoid')  # Capa de salida con activación sigmoide (para clasificación binaria)
+])
+
+# Compilar el modelo
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# Mostrar resumen del modelo
+model.summary()
+
+#inicio de entrenamiento
+history = model.fit(X_train, y_train, epochs=100, batch_size=10, validation_data=(X_test, y_test))
+
+#Bloque 5
+# agregar todas las variables de medidicon de presisicon o acurrancy tprate entre otros
+
+from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score, roc_curve, precision_recall_curve, average_precision_score
+
+# Predicciones en el conjunto de prueba
+y_pred = (model.predict(X_test) > 0.5).astype("int32")
+
+# Matriz de confusión
+cm = confusion_matrix(y_test, y_pred)
+print("Matriz de Confusión:")
+print(cm)
+
+# Informe de clasificación
+print("\nInforme de Clasificación:")
+print(classification_report(y_test, y_pred))
+
+# AUC (Area Under the Curve) ROC
+y_pred_proba = model.predict(X_test)
+auc_roc = roc_auc_score(y_test, y_pred_proba)
+print(f"\nAUC ROC: {auc_roc:.4f}")
+
+# Curva ROC
+fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+
+# Average Precision Score
+average_precision = average_precision_score(y_test, y_pred_proba)
+print(f"\nAverage Precision Score: {average_precision:.4f}")
+
+# Curva Precision-Recall
+precision, recall, _ = precision_recall_curve(y_test, y_pred_proba)
+
+# Sensibilidad (True Positive Rate) y Especificidad (True Negative Rate)
+tn, fp, fn, tp = cm.ravel()
+sensitivity = tp / (tp + fn)
+specificity = tn / (tn + fp)
+print(f"\nSensitivity (TPR): {sensitivity:.4f}")
+print(f"Specificity (TNR): {specificity:.4f}")
+
+#Bloque 6
+y_pred = (model.predict(X_test) > 0.5).astype("int32")
+
+# Mostrar algunas predicciones
+print("Predicciones:", y_pred[:10].flatten())
+print("Reales:", y_test[:10].values)
+
+#Bloque 7
+# optimizar el modelo
+
+import numpy as np
+import pandas as pd
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score, roc_curve, precision_recall_curve, average_precision_score
+
+# Cargar el dataset
+data = load_breast_cancer()
+df = pd.DataFrame(data.data, columns=data.feature_names)
+df['target'] = data.target  # Añadir la columna objetivo
+
+# Seleccionar características más relevantes
+features = ['mean radius', 'mean texture', 'mean perimeter', 'mean area', 'mean concavity']
+X = df[features]  # Variables predictoras
+y = df['target']  # Variable objetivo
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Definir el modelo con regularización y dropout
+model = Sequential([
+    Dense(64, activation='relu', input_shape=(X_train.shape[1],), kernel_regularizer=keras.regularizers.l2(0.01)),  # Capa oculta con 64 neuronas y regularización L2
+    Dropout(0.2),  # Dropout para evitar overfitting
+    Dense(32, activation='relu', kernel_regularizer=keras.regularizers.l2(0.01)),  # Segunda capa oculta con 16 neuronas y regularización L2
+    Dropout(0.2),  # Dropout para evitar overfitting
+    Dense(1, activation='sigmoid')  # Capa de salida con activación sigmoide (para clasificación binaria)
+])
+
+# Compilar el modelo con un optimizador más avanzado
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+
+# Matriz de confusión
+cm = confusion_matrix(y_test, y_pred)
+print("Matriz de Confusión:")
+print(cm)
+
+# Informe de clasificación
+print("\nInforme de Clasificación:")
+print(classification_report(y_test, y_pred))
+
+# AUC (Area Under the Curve) ROC
+y_pred_proba = model.predict(X_test)
+auc_roc = roc_auc_score(y_test, y_pred_proba)
+print(f"\nAUC ROC: {auc_roc:.4f}")
+
+# Curva ROC
+fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+
+# Average Precision Score
+average_precision = average_precision_score(y_test, y_pred_proba)
+print(f"\nAverage Precision Score: {average_precision:.4f}")
+
+# Curva Precision-Recall
+precision, recall, _ = precision_recall_curve(y_test, y_pred_proba)
+
+# Sensibilidad (True Positive Rate) y Especificidad (True Negative Rate)
+tn, fp, fn, tp = cm.ravel()
+sensitivity = tp / (tp + fn)
+specificity = tn / (tn + fp)
+print(f"\nSensitivity (TPR): {sensitivity:.4f}")
+print(f"Specificity (TNR): {specificity:.4f}")
+
+
+#Bloque 8
+# Mostrar resumen del modelo
+model.summary()
+
+# Entrenar el modelo con early stopping para evitar overfitting
+early_stopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+history = model.fit(X_train, y_train, epochs=100, batch_size=16, validation_data=(X_test, y_test), callbacks=[early_stopping])
+
+loss, accuracy = model.evaluate(X_test, y_test)
+print(f'Precisión en el conjunto de prueba: {accuracy:.4f}')
+
+# ... (El resto del código para evaluar el modelo permanece igual)
+
+#Bloque 9
+# hacer prueba para cuando el tumor sea maligno
+
+import numpy as np
+# Supongamos que tienes un nuevo conjunto de datos con características de un tumor
+nuevo_tumor = np.array([[18.0, 20.0, 120.0, 1000.0, 0.2]])  # Reemplaza con los valores reales tumor maligno
+#nuevo_tumor = np.array([[10.0, 15.0, 50.0, 200.0, 0.05]])  # Reemplaza con los valores reales tumor benigno
+
+
+# Escala las características del nuevo tumor usando el mismo escalador que se usó para el conjunto de entrenamiento
+nuevo_tumor_escalado = scaler.transform(nuevo_tumor)
+
+# Realiza la predicción usando el modelo entrenado
+prediccion = model.predict(nuevo_tumor_escalado)
+
+# La predicción es una probabilidad de que el tumor sea maligno (0)
+if prediccion > 0.5:
+  print("El modelo predice que el tumor es benigno.")
+else:
+  print("El modelo predice que el tumor es maligno.")
+
+#Bloque 10
+#from tensorflow.keras.models import load_model
+model.save("modelo_cancer_mama.h5")
+
+#Bloque 11
+import joblib
+# Guardar el scaler después de ajustar los datos
+joblib.dump(scaler, "scaler.pkl")
+
+#Bloque 12
+# Guardar X_train ya escalado
+np.save("X_train.npy", X_train)
+
+#Bloque 13
+import joblib
+from tensorflow.keras.models import load_model
+import numpy as np
+
+# Cargar el modelo
+modelo_cargado = load_model("modelo_cancer_mama.h5")
+
+# Cargar el scaler previamente entrenado y guardado
+scaler = joblib.load("scaler.pkl")
+
+# Nueva muestra sin necesidad de X_train
+#nueva_muestra = np.array([[18.5, 20.0, 110.0, 1000.0, 0.15]]) #prediccion [[0.02237869]] No se detecta un tumor significativo
+#nueva_muestra = np.array([[18.0, 20.0, 120.0, 1000.0, 0.2]]) #prediccion [[0.01547791]] No se detecta un tumor significativo
+nueva_muestra = np.array([[14.2, 20.1, 92.5, 600.1, 0.15]]) #prediccion [[0.14950964]] benigno
+#nueva_muestra = np.array([[0.25, 0.30, 15, 20, 0.35]]) #prediccion [[0.9999911]] maligno
+nueva_muestra = scaler.transform(nueva_muestra)  # Aplicar transformación
+
+#Bloque 14
+# Realizar la predicción
+prediccion = modelo_cargado.predict(nueva_muestra)
+
+# Interpretar el resultado
+if prediccion[0] > 0.5:
+    print("🔴 Posible tumor MALIGNO")
+else:
+    print("🟢 Posible tumor BENIGNO")
+#se debe sekeccionar una de las nuevas muestras en el bloque anterior en donde se dan los resultados al finalizar las lineas 
+#y luego ejecutar el bloque 14 que realiza la prediccion y está debe estar acorde a lo descrito en el bloque 13
