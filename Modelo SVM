@@ -1,0 +1,124 @@
+# Modelo SVM
+# para predicción de cáncer de mama
+
+# 1. Importación de librerías necesarias
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    classification_report, confusion_matrix, roc_curve, auc,
+    precision_recall_curve
+)
+import joblib  # para guardar y cargar el modelo entrenado
+
+# 2. Cargar dataset
+data = load_breast_cancer()
+X, y = data.data, data.target
+
+# 3. División en entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# 4. Estandarización de datos (fundamental para SVM)
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# 5. Modelo SVM
+model = SVC(kernel='rbf', C=1.0, probability=True, random_state=42)
+model.fit(X_train, y_train)
+
+# 6. Predicciones
+y_pred = model.predict(X_test)
+y_prob = model.predict_proba(X_test)[:, 1]  # Probabilidades de clase positiva
+
+# 7. Métricas numéricas
+acc = accuracy_score(y_test, y_pred)
+prec = precision_score(y_test, y_pred)
+rec = recall_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred)
+
+print("===== MÉTRICAS DEL MODELO SVM =====")
+print(f"Accuracy  : {acc:.4f}")
+print(f"Precisión : {prec:.4f}")
+print(f"Sensibilidad (Recall): {rec:.4f}")
+print(f"F1-score  : {f1:.4f}")
+print("\nReporte de Clasificación:\n", classification_report(y_test, y_pred, target_names=data.target_names))
+
+# 8. Matriz de Confusión (valores + gráfica)
+cm = confusion_matrix(y_test, y_pred)
+print("\nMatriz de Confusión:\n", cm)
+
+plt.figure(figsize=(5,4))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Purples", xticklabels=data.target_names, yticklabels=data.target_names)
+plt.xlabel("Predicción")
+plt.ylabel("Real")
+plt.title("Matriz de Confusión - SVM")
+plt.show()
+
+# 9. Curva ROC y AUC
+fpr, tpr, thresholds = roc_curve(y_test, y_prob)
+roc_auc = auc(fpr, tpr)
+
+plt.figure(figsize=(6,5))
+plt.plot(fpr, tpr, color="purple", label=f"AUC = {roc_auc:.4f}")
+plt.plot([0,1], [0,1], color="gray", linestyle="--")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("Curva ROC - SVM")
+plt.legend(loc="lower right")
+plt.show()
+
+# 10. Curva Precision-Recall
+precisions, recalls, thresholds = precision_recall_curve(y_test, y_prob)
+
+plt.figure(figsize=(6,5))
+plt.plot(recalls, precisions, marker=".")
+plt.xlabel("Recall")
+plt.ylabel("Precision")
+plt.title("Curva Precision-Recall - SVM")
+plt.show()
+
+# 11. Distribución de probabilidades
+plt.figure(figsize=(6,5))
+sns.histplot(y_prob[y_test==0], color="red", label="Maligno (0)", kde=True, stat="density", bins=25)
+sns.histplot(y_prob[y_test==1], color="green", label="Benigno (1)", kde=True, stat="density", bins=25)
+plt.xlabel("Probabilidad predicha")
+plt.title("Distribución de Probabilidades por Clase - SVM")
+plt.legend()
+plt.show()
+
+# 12. Guardar el modelo y el escalador
+joblib.dump(model, "modelo_svm_cancer.pkl")
+joblib.dump(scaler, "escalador_svm.pkl")
+print("\nModelo y escalador guardados como 'modelo_svm_cancer.pkl' y 'escalador_svm.pkl'")
+
+# 13. Cargar el modelo para pruebas o producción
+modelo_cargado = joblib.load("modelo_svm_cancer.pkl")
+escalador_cargado = joblib.load("escalador_svm.pkl")
+
+# 14. Prueba con un nuevo paciente (30 valores)
+nuevo_paciente = [14.2, 20.5, 92.3, 600.1, 0.11, 0.15, 0.08, 0.05, 0.18, 0.07,
+                  0.35, 1.2, 2.5, 30.0, 0.007, 0.02, 0.02, 0.01, 0.02, 0.003,
+                  16.1, 25.4, 104.3, 800.5, 0.15, 0.25, 0.12, 0.10, 0.20, 0.08]
+
+# Escalar los datos antes de predecir
+nuevo_paciente = np.array(nuevo_paciente).reshape(1, -1)
+nuevo_paciente_escalado = escalador_cargado.transform(nuevo_paciente)
+
+# Predicción y probabilidades
+nueva_prediccion = modelo_cargado.predict(nuevo_paciente_escalado)
+probabilidades = modelo_cargado.predict_proba(nuevo_paciente_escalado)
+
+print("\n===== PREDICCIÓN CON VALORES PERSONALIZADOS =====")
+print("Predicción:", nueva_prediccion, "=>", data.target_names[nueva_prediccion][0])
+print("Probabilidades:")
+print(" - Maligno (0):", f"{probabilidades[0][0]:.4f}")
+print(" - Benigno (1):", f"{probabilidades[0][1]:.4f}")
