@@ -1,0 +1,111 @@
+# Exploratory Data Analysis (EDA) - Dataset BUSI
+
+# Importación de librerías necesarias
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+import random
+import numpy as np
+from PIL import Image
+from collections import Counter
+from tqdm import tqdm
+
+
+# 1 CONFIGURACIÓN DE DIRECTORIOS
+# Cambia esta ruta a la ubicación donde tengas el dataset BUSI_with_GT
+base_dir = "/content/drive/MyDrive/Dataset_BUSI_with_GT"  # <-- AJUSTA AQUÍ LA RUTA
+
+# Verificamos las carpetas principales
+categories = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
+print(" Categorías encontradas:", categories)
+
+
+# 2 CONTEO DE IMÁGENES POR CATEGORÍA
+image_counts = {}
+for category in categories:
+    folder_path = os.path.join(base_dir, category)
+    count = len([f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
+    image_counts[category] = count
+
+print("\n Número de imágenes por categoría:")
+for k, v in image_counts.items():
+    print(f"  - {k}: {v} imágenes")
+
+# Visualización del conteo
+plt.figure(figsize=(6,4))
+sns.barplot(x=list(image_counts.keys()), y=list(image_counts.values()), palette="mako")
+plt.title("Distribución de imágenes por categoría")
+plt.xlabel("Categoría")
+plt.ylabel("Cantidad de imágenes")
+plt.show()
+
+# 3 VISUALIZACIÓN DE ALGUNAS IMÁGENES ALEATORIAS
+
+def show_sample_images(base_dir, categories, samples_per_class=4):
+    plt.figure(figsize=(12, 8))
+    for i, category in enumerate(categories):
+        folder_path = os.path.join(base_dir, category)
+        images = [f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        random_images = random.sample(images, min(samples_per_class, len(images)))
+        
+        for j, img_name in enumerate(random_images):
+            img_path = os.path.join(folder_path, img_name)
+            img = Image.open(img_path)
+            plt.subplot(len(categories), samples_per_class, i*samples_per_class + j + 1)
+            plt.imshow(img, cmap='gray')
+            plt.axis('off')
+            if j == 0:
+                plt.ylabel(category, fontsize=12, rotation=0, labelpad=50)
+    plt.suptitle(" Muestras aleatorias de cada categoría", fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+show_sample_images(base_dir, categories)
+
+
+# 4 ANÁLISIS DE DIMENSIONES DE LAS IMÁGENES
+widths, heights = [], []
+for category in tqdm(categories, desc="Analizando dimensiones"):
+    folder_path = os.path.join(base_dir, category)
+    for img_file in os.listdir(folder_path):
+        if img_file.lower().endswith(('.png', '.jpg', '.jpeg')):
+            img_path = os.path.join(folder_path, img_file)
+            img = Image.open(img_path)
+            widths.append(img.size[0])
+            heights.append(img.size[1])
+
+print("\n Promedio de dimensiones:")
+print(f"Ancho promedio: {np.mean(widths):.2f} px")
+print(f"Alto promedio:  {np.mean(heights):.2f} px")
+
+plt.figure(figsize=(10,4))
+sns.histplot(widths, color="skyblue", bins=20, label='Anchos')
+sns.histplot(heights, color="salmon", bins=20, label='Altos')
+plt.legend()
+plt.title("Distribución de tamaños de imágenes")
+plt.xlabel("Pixeles")
+plt.show()
+
+
+# 5 DETECCIÓN DE IMÁGENES ANÓMALAS
+# (Detecta imágenes demasiado pequeñas o grandes)
+threshold_min, threshold_max = 150, 800  # valores que puedes ajustar
+anomalies = [i for i, (w,h) in enumerate(zip(widths, heights)) if w < threshold_min or h < threshold_min or w > threshold_max or h > threshold_max]
+print(f"\n Imágenes anómalas detectadas: {len(anomalies)} (fuera del rango {threshold_min}-{threshold_max}px)")
+
+# 6 RESUMEN GENERAL
+total_images = sum(image_counts.values())
+print("\n RESUMEN DEL DATASET")
+print("===========================")
+print(f"Total de categorías: {len(categories)}")
+print(f"Total de imágenes: {total_images}")
+for cat, count in image_counts.items():
+    perc = (count / total_images) * 100
+    print(f"  - {cat}: {count} imágenes ({perc:.2f}%)")
+print("===========================")
+
+# 7 OPCIONAL: PROPORCIONES EN GRÁFICO DE TORTA
+plt.figure(figsize=(5,5))
+plt.pie(image_counts.values(), labels=image_counts.keys(), autopct='%1.1f%%', startangle=90, colors=sns.color_palette("pastel"))
+plt.title("Proporción de clases en el dataset BUSI")
+plt.show()
