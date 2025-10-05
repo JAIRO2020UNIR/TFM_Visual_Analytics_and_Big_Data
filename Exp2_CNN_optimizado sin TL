@@ -1,0 +1,235 @@
+# CNN optimizada (sin Transfer Learning) para
+# clasificación BUSI: normal / benign / malignant
+# Aplica: Data Augmentation, ReduceLROnPlateau,
+# IMG_SIZE = 224, Dropout reducido (0.2-0.3)
+
+# 0. Importaciones
+import os
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix, roc_curve, auc
+from sklearn.preprocessing import label_binarize
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from tensorflow.keras.utils import to_categorical
+
+# 1. --- PARÁMETROS EXPERIMENTALES (ajustables) ---
+DATASET_PATH = "/content/drive/MyDrive/Dataset_BUSI_with_GT"  # ajustar ruta
+CATEGORIES = ['normal', 'benign', 'malignant']
+LABEL_DICT = {'normal': 0, 'benign': 1, 'malignant': 2}
+
+# Preprocesamiento / Augmentation
+IMG_SIZE = 224                   # recomendado probar 224x224
+CHANNELS = 1                     # 1 = grayscale, 3 = RGB (si cambias a 3, actualizar lectura)
+NORMALIZATION_FACTOR = 255.0
+
+# Dataset balancing / loading
+MAX_PER_CLASS = 150              # límite por clase (ajustable)
+
+# Arquitectura
+FILTERS_1 = 32
+FILTERS_2 = 64
+FILTERS_3 = 128
+KERNEL_SIZE = (3,3)
+POOL_SIZE = (2,2)
+DENSE_UNITS = 128
+DROPOUT_BLOCK = 0.25            # reducido (entre 0.2 - 0.3)
+DROPOUT_DENSE = 0.3
+
+# Entrenamiento / Optimización
+LEARNING_RATE = 0.0005          # algo más bajo para estabilidad
+BATCH_SIZE = 16                 # ajustar según memoria GPU
+EPOCHS = 50
+TEST_SIZE = 0.20
+VALIDATION_SPLIT = 0.2          # en model.fit (parte del X_train)
+RANDOM_STATE = 42
+
+# Callbacks
+PATIENCE_ES = 8                 # early stopping patience
+PATIENCE_RLR = 3                # ReduceLROnPlateau patience
+MIN_LR = 1e-7
+
+# Ruta para guardar el mejor modelo
+MODEL_PATH = "cnn_optimizado_no_tl.keras"
+
+# 2. --- CARGA Y PREPROCESADO DE IMÁGENES (lectura manual, manteniendo control) ---
+images = []
+labels = []
+class_counts = {0:0, 1:0, 2:0}
+
+for category in CATEGORIES:
+    folder_path = os.path.join(DATASET_PATH, category)
+    class_label = LABEL_DICT[category]
+    if not os.path.isdir(folder_path):
+        raise FileNotFoundError(f"No existe la carpeta: {folder_path}")
+    for fname in sorted(os.listdir(folder_path)):
+        if "_mask" in fname.lower():
+            continue
+        if class_counts[class_label] >= MAX_PER_CLASS:
+            continue
+        p = os.path.join(folder_path, fname)
+        img = cv2.imread(p, cv2.IMREAD_GRAYSCALE if CHANNELS==1 else cv2.IMREAD_COLOR)
+        if img is None:
+            continue
+        img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+        images.append(img)
+        labels.append(class_label)
+        class_counts[class_label] += 1
+
+images = np.array(images, dtype=np.float32)
+# Normalizar y dar formato (batch, H, W, C)
+images /= NORMALIZATION_FACTOR
+if CHANNELS == 1:
+    images = images.reshape(-1, IMG_SIZE, IMG_SIZE, 1)
+else:
+    images = images.reshape(-1, IMG_SIZE, IMG_SIZE, 3)
+
+labels = np.array(labels)
+y_cat = to_categorical(labels, num_classes=len(CATEGORIES))
+
+print("Distribución cargada por clase:", class_counts)
+print("Imágenes:", images.shape, "Etiquetas:", y_cat.shape)
+
+# 3. --- División en entrenamiento y prueba (estratificada) ---
+X_train, X_test, y_train, y_test = train_test_split(
+    images, y_cat, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y_cat
+)
+
+print("Train shape:", X_train.shape, "Test shape:", X_test.shape)
+
+# 4. --- Data Augmentation (Keras) ---
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+train_datagen = ImageDataGenerator(
+    rotation_range=20,
+    width_shift_range=0.08,
+    height_shift_range=0.08,
+    shear_range=0.08,
+    zoom_range=0.12,
+    horizontal_flip=True,
+    brightness_range=(0.8, 1.2),
+    fill_mode='nearest'
+)
+
+# validation generator only rescales (we already have rescaled arrays, so use flow)
+# We'll use datagen.flow on numpy arrays
+train_generator = train_datagen.flow(
+    X_train, y_train,
+    batch_size=BATCH_SIZE,
+    shuffle=True
+)
+
+# 5. --- Construcción de la arquitectura CNN optimizada ---
+def build_model(input_shape=(IMG_SIZE, IMG_SIZE, CHANNELS), n_classes=3):
+    model = Sequential()
+    # Bloque 1
+    model.add(Conv2D(FILTERS_1, KERNEL_SIZE, activation='relu', padding='same', input_shape=input_shape))
+    model.add(BatchNormalization())
+    model.add(MaxPooling2D(POOL_SIZE))
+    model.add(Dropout(DROPOUT_BLOCK))
+    # Bloque 2
+    model.add(Conv2D(FILTERS_2, KERNEL_SIZE, activation='relu', padding='same'))
+    model.add(BatchNormalization())
+    model.add(MaxPooling2D(POOL_SIZE))
+    model.add(Dropout(DROPOUT_BLOCK))
+    # Bloque 3 (más profundo)
+    model.add(Conv2D(FILTERS_3, KERNEL_SIZE, activation='relu', padding='same'))
+    model.add(BatchNormalization())
+    model.add(MaxPooling2D(POOL_SIZE))
+    model.add(Dropout(DROPOUT_BLOCK))
+    # Global features
+    model.add(Flatten())
+    model.add(Dense(DENSE_UNITS, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(DROPOUT_DENSE))
+    model.add(Dense(n_classes, activation='softmax'))
+    return model
+
+model = build_model(input_shape=(IMG_SIZE, IMG_SIZE, CHANNELS), n_classes=len(CATEGORIES))
+opt = Adam(learning_rate=LEARNING_RATE)
+model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['accuracy'])
+model.summary()
+
+# 6. --- Callbacks: EarlyStopping, ReduceLROnPlateau, ModelCheckpoint ---
+early_stop = EarlyStopping(monitor='val_loss', patience=PATIENCE_ES, restore_best_weights=True, verbose=1)
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=PATIENCE_RLR, min_lr=MIN_LR, verbose=1)
+checkpoint = ModelCheckpoint(MODEL_PATH, monitor='val_loss', save_best_only=True, verbose=1)
+
+# 7. --- Entrenamiento usando generator para augmentación ---
+steps_per_epoch = max(1, len(X_train) // BATCH_SIZE)
+
+history = model.fit(
+    train_generator,
+    steps_per_epoch=steps_per_epoch,
+    epochs=EPOCHS,
+    validation_data=(X_test, y_test),
+    callbacks=[early_stop, reduce_lr, checkpoint],
+    verbose=1
+)
+
+# 8. --- Evaluación final ---
+test_loss, test_acc = model.evaluate(X_test, y_test, verbose=1)
+print(f"\nExactitud (accuracy) en prueba: {test_acc:.4f}   - Loss: {test_loss:.4f}")
+
+# 9. --- Predicciones y métricas detalladas ---
+y_pred_proba = model.predict(X_test)
+y_pred = np.argmax(y_pred_proba, axis=1)
+y_true = np.argmax(y_test, axis=1)
+
+print("\n===== REPORTE DE CLASIFICACIÓN =====")
+print(classification_report(y_true, y_pred, target_names=CATEGORIES, zero_division=0))
+
+# 10. --- Matriz de confusión ---
+cm = confusion_matrix(y_true, y_pred)
+plt.figure(figsize=(6,5))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=CATEGORIES, yticklabels=CATEGORIES)
+plt.xlabel("Predicción")
+plt.ylabel("Real")
+plt.title("Matriz de Confusión - CNN Optimizada (sin TL)")
+plt.show()
+
+# 11. --- Curvas ROC (one-vs-rest) y AUC por clase ---
+n_classes = len(CATEGORIES)
+y_test_bin = label_binarize(y_true, classes=list(range(n_classes)))
+fpr = dict(); tpr = dict(); roc_auc = dict()
+plt.figure(figsize=(7,6))
+for i in range(n_classes):
+    fpr[i], tpr[i], _ = roc_curve(y_test_bin[:, i], y_pred_proba[:, i])
+    roc_auc[i] = auc(fpr[i], tpr[i])
+    plt.plot(fpr[i], tpr[i], lw=2, label=f'{CATEGORIES[i]} (AUC = {roc_auc[i]:.3f})')
+plt.plot([0,1], [0,1], 'k--')
+plt.xlabel('FPR')
+plt.ylabel('TPR')
+plt.title('Curvas ROC por Clase - CNN Optimizada')
+plt.legend(loc='lower right')
+plt.show()
+
+# 12. --- Curvas de entrenamiento (accuracy / loss) ---
+plt.figure(figsize=(12,5))
+plt.subplot(1,2,1)
+plt.plot(history.history.get('accuracy', []), label='train_acc')
+plt.plot(history.history.get('val_accuracy', []), label='val_acc')
+plt.title('Accuracy')
+plt.xlabel('Épocas')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.subplot(1,2,2)
+plt.plot(history.history.get('loss', []), label='train_loss')
+plt.plot(history.history.get('val_loss', []), label='val_loss')
+plt.title('Loss')
+plt.xlabel('Épocas')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+# 13. --- Guardar el modelo final (formato Keras recomendado) ---
+model.save("cnn_optimizado_no_tl.keras")
+print("\nModelo guardado como 'cnn_optimizado_no_tl.keras' (formato Keras nativo)")
