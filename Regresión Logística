@@ -91,14 +91,14 @@ plt.title("Distribución de Probabilidades por Clase")
 plt.legend()
 plt.show()
 
-# 8. Guardamos el modelo entrenado en un archivo
+# 11. Guardamos el modelo entrenado en un archivo
 joblib.dump(log_reg, "modelo_regresion_logistica.pkl")
 print("\n Modelo guardado como 'modelo_regresion_logistica.pkl'")
 
-# 9.Cargar el modelo para usarlo en producción
+# 12.Cargar el modelo para usarlo en producción
 modelo_cargado = joblib.load("modelo_regresion_logistica.pkl")
 
-# Probamos que funciona
+# 13.Probamos que funciona
 nueva_prediccion = modelo_cargado.predict([X_test[0]])
 print("\nPredicción de ejemplo con modelo cargado:", nueva_prediccion, 
       "=>", data.target_names[nueva_prediccion][0])
