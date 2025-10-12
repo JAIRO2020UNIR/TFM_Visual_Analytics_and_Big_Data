@@ -230,6 +230,6 @@ plt.ylabel('Loss')
 plt.legend()
 plt.show()
 
-# 13. --- Guardar el modelo final (formato Keras recomendado) ---
+# 13. --- Guardar el modelo final 
 model.save("cnn_optimizado_no_tl.keras")
 print("\nModelo guardado como 'cnn_optimizado_no_tl.keras' (formato Keras nativo)")
