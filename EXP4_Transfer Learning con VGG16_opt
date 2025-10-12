@@ -1,0 +1,160 @@
+
+# EXPERIMENTO 3.2 - Transfer Learning (VGG16 Optimizado)
+
+# Importamos librerías necesarias
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, GlobalAveragePooling2D
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+import seaborn as sns
+
+# CONFIGURACIÓN INICIAL
+IMG_SIZE = 224
+BATCH_SIZE = 16
+EPOCHS = 60
+DATASET_DIR = "/content/drive/MyDrive/Dataset_BUSI_with_GT"
+CATEGORIES = ['normal', 'benign', 'malignant']
+
+# AUMENTO Y NORMALIZACIÓN DE DATOS
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    validation_split=0.2,
+    rotation_range=30,         # Mayor rotación
+    width_shift_range=0.15,    # Más variabilidad
+    height_shift_range=0.15,
+    zoom_range=0.25,
+    brightness_range=[0.7, 1.3],
+    horizontal_flip=True,
+    vertical_flip=True,
+    shear_range=0.2,           # Pequeñas deformaciones
+    fill_mode='nearest'
+)
+
+train_generator = train_datagen.flow_from_directory(
+    DATASET_DIR,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    color_mode='rgb',
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='training',
+    shuffle=True
+)
+
+val_generator = train_datagen.flow_from_directory(
+    DATASET_DIR,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    color_mode='rgb',
+    batch_size=BATCH_SIZE,
+    class_mode='categorical',
+    subset='validation',
+    shuffle=False
+)
+
+# MODELO BASE VGG16
+base_model = VGG16(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
+
+# Descongelamos las últimas 4 capas convolucionales para ajuste fino
+for layer in base_model.layers[:-4]:
+    layer.trainable = False
+for layer in base_model.layers[-4:]:
+    layer.trainable = True
+
+# CAPAS PERSONALIZADAS
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+x = Dense(512, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dropout(0.4)(x)
+x = Dense(256, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dropout(0.3)(x)
+output = Dense(3, activation='softmax')(x)
+
+model = Model(inputs=base_model.input, outputs=output)
+
+# COMPILACIÓN DEL MODELO
+optimizer = Adam(learning_rate=1e-5)  #  Tasa de aprendizaje más baja para fine-tuning
+model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+
+# CALLBACKS
+checkpoint = ModelCheckpoint('cnn_transfer_vgg16_opt.keras', monitor='val_loss', save_best_only=True, verbose=1)
+early_stop = EarlyStopping(monitor='val_loss', patience=12, restore_best_weights=True, verbose=1)
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', patience=4, factor=0.3, verbose=1, min_lr=1e-7)
+
+# ENTRENAMIENTO
+history = model.fit(
+    train_generator,
+    validation_data=val_generator,
+    epochs=EPOCHS,
+    callbacks=[checkpoint, early_stop, reduce_lr],
+    verbose=1
+)
+
+# EVALUACIÓN FINAL
+val_loss, val_acc = model.evaluate(val_generator)
+print(f"\n Exactitud (accuracy) en validación: {val_acc:.4f}   -   Pérdida (loss): {val_loss:.4f}")
+
+# PREDICCIONES Y MÉTRICAS
+y_true = val_generator.classes
+y_pred_prob = model.predict(val_generator)
+y_pred = np.argmax(y_pred_prob, axis=1)
+
+# REPORTE DE CLASIFICACIÓN
+print("\n===== REPORTE DE CLASIFICACIÓN =====")
+print(classification_report(y_true, y_pred, target_names=CATEGORIES, digits=4))
+
+# MATRIZ DE CONFUSIÓN
+cm = confusion_matrix(y_true, y_pred)
+plt.figure(figsize=(6,5))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=CATEGORIES, yticklabels=CATEGORIES)
+plt.title("Matriz de Confusión")
+plt.xlabel("Predicción")
+plt.ylabel("Real")
+plt.show()
+
+# MATRIZ NORMALIZADA
+cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+plt.figure(figsize=(6,5))
+sns.heatmap(cm_norm, annot=True, fmt=".2f", cmap='Greens',
+            xticklabels=CATEGORIES, yticklabels=CATEGORIES)
+plt.title("Matriz de Confusión Normalizada")
+plt.xlabel("Predicción")
+plt.ylabel("Real")
+plt.show()
+
+# AUC MULTICLASE
+try:
+    roc_auc = roc_auc_score(y_true, y_pred_prob, multi_class='ovr')
+    print(f"\n AUC (Área bajo la curva ROC): {roc_auc:.4f}")
+except Exception as e:
+    print(f"No se pudo calcular AUC: {e}")
+
+# CURVAS DE ENTRENAMIENTO
+plt.figure(figsize=(12,5))
+plt.subplot(1,2,1)
+plt.plot(history.history['accuracy'], label='Entrenamiento')
+plt.plot(history.history['val_accuracy'], label='Validación')
+plt.title('Precisión durante el entrenamiento')
+plt.xlabel('Épocas')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.subplot(1,2,2)
+plt.plot(history.history['loss'], label='Entrenamiento')
+plt.plot(history.history['val_loss'], label='Validación')
+plt.title('Pérdida durante el entrenamiento')
+plt.xlabel('Épocas')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+# Guardar el modelo final 
+model.save("cnn_transfer_vgg16_opt.keras")
+print("\nModelo guardado como 'cnn_transfer_vgg16_opt.keras' (formato Keras nativo)")
