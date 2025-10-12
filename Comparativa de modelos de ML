@@ -1,0 +1,122 @@
+
+# COMPARATIVA DE MODELOS SUPERVISADOS PARA CÁNCER DE MAMA
+# FASE 1 - TESIS: Evaluación Experimental de Modelos Clásicos
+
+# 1 Importación de librerías necesarias
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, confusion_matrix, classification_report,
+    roc_curve, auc, precision_recall_curve, matthews_corrcoef
+)
+
+# 2 Cargar dataset
+data = load_breast_cancer()
+X, y = data.data, data.target
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# 3 Estandarización (mejora el rendimiento en modelos sensibles a escala)
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# 4 Definición de modelos
+modelos = {
+    "Regresión Logística": LogisticRegression(max_iter=5000),
+    "SVM (RBF)": SVC(kernel='rbf', probability=True, random_state=42),
+    "Árbol de Decisión": DecisionTreeClassifier(criterion='entropy', max_depth=5, random_state=42),
+    "Random Forest": RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1),
+    "Red Neuronal (MLP)": MLPClassifier(hidden_layer_sizes=(32, 16), activation='relu', max_iter=1000, random_state=42)
+}
+
+# 5 Entrenamiento y evaluación
+resultados = []
+plt.figure(figsize=(8, 6))
+for nombre, modelo in modelos.items():
+    modelo.fit(X_train, y_train)
+    y_pred = modelo.predict(X_test)
+    y_prob = modelo.predict_proba(X_test)[:, 1]
+
+    # Métricas clave
+    acc = accuracy_score(y_test, y_pred)
+    prec = precision_score(y_test, y_pred)
+    rec = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    auc_score = roc_auc_score(y_test, y_prob)
+    #mcc = matthews_corrcoef(y_test, y_pred)
+
+    resultados.append({
+        "Modelo": nombre,
+        "Accuracy": acc,
+        "Precisión": prec,
+        "Recall": rec,
+        "F1-Score": f1,
+        "AUC-ROC": auc_score
+        #"MCC": mcc
+    })
+
+
+
+# 6 Resultados en tabla
+df_resultados = pd.DataFrame(resultados)
+df_resultados = df_resultados.sort_values(by="AUC-ROC", ascending=False)
+print("=== TABLA COMPARATIVA DE MÉTRICAS ===")
+print(df_resultados)
+
+# 7 Visualización de métricas comparadas
+plt.figure(figsize=(10, 6))
+sns.barplot(x="Modelo", y="AUC-ROC", data=df_resultados, palette="viridis")
+plt.title("Comparativa de desempeño - AUC ROC por modelo")
+plt.xticks(rotation=30)
+plt.show()
+
+# 8 Matrices de confusión individuales
+for nombre, modelo in modelos.items():
+    y_pred = modelo.predict(X_test)
+    cm = confusion_matrix(y_test, y_pred)
+    plt.figure(figsize=(4, 3))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=data.target_names, yticklabels=data.target_names)
+    plt.title(f"Matriz de Confusión - {nombre}")
+    plt.xlabel("Predicción")
+    plt.ylabel("Real")
+    plt.show()
+
+# 9 Curvas Precision-Recall
+plt.figure(figsize=(8, 6))
+for nombre, modelo in modelos.items():
+    y_prob = modelo.predict_proba(X_test)[:, 1]
+    precisions, recalls, _ = precision_recall_curve(y_test, y_prob)
+    plt.plot(recalls, precisions, label=f"{nombre}")
+plt.xlabel("Recall")
+plt.ylabel("Precision")
+plt.title("Curvas Precision-Recall comparativas")
+plt.legend()
+plt.show()
+
+#10 Reporte detallado de clasificación (opcional)
+for nombre, modelo in modelos.items():
+    y_pred = modelo.predict(X_test)
+    print(f"\n ==== Reporte de Clasificación: {nombre} ====")
+    print(classification_report(y_test, y_pred, target_names=data.target_names))
+
+# 11 Mostrar resumen final de métricas promedio
+#display(df_resultados.style.background_gradient(cmap='YlGnBu').format("{:.3f}"))
+# Mostrar tabla con formato solo en columnas numéricas
+numeric_cols = df_resultados.select_dtypes(include=np.number).columns
+display(df_resultados.style.background_gradient(cmap='YlGnBu').format(subset=numeric_cols, formatter="{:.3f}"))
+
